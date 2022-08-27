@@ -83,7 +83,6 @@ fn test_package_functions() {
 }
 
 #[test]
-/// Calling blueprint function that does not exist 
 fn test_package_functions_error() {
     let mut ledger = InMemorySubstateStore::with_bootstrap();
     let mut test_env = TestEnv::new(&mut ledger);
@@ -155,8 +154,9 @@ fn test_component_func() {
     let hello_component = instantiate_receipt.new_component_addresses[0];
     let _admin_badge = instantiate_receipt.new_resource_addresses[0];
     
-    let method_receipt = test_env.call_method(hello_component, "update_state", vec![scrypto_encode(&42u32)]);
+    let mut method_receipt = test_env.call_method(hello_component, "update_state", vec![scrypto_encode(&42u32)]);
     println!("{:?}", method_receipt);
+    println!("Outputs: {:?}", method_receipt.outputs.swap_remove(0).raw);
     assert!(method_receipt.result.is_ok());
 }
 
@@ -176,5 +176,45 @@ fn test_create_token_send_amount() {
     println!("{:?}", transfer_receipt);
     assert!(transfer_receipt.result.is_ok());
     //TODO: assert balance of user before->after using test_env.get_amount_for_rd()
+    println!("{:?}", ledger); // TODO: !!!
+}
+
+#[test]
+fn test_return_of_call_method() {
+    let mut ledger = InMemorySubstateStore::with_bootstrap();
+    let mut test_env = TestEnv::new(&mut ledger);
+
+    test_env.create_user("admin");
+    test_env.create_user("user");
+
+    test_env.acting_as("admin");
+    let package = compile_package!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/assets/hello-world/",
+    ));
+
+    test_env.publish_package(PACKAGE, &package);
+    // no need to call using_package. Just published package is set as default.
+
+    let instantiate_receipt = test_env.call_function(BLUEPRINT, "instantiate", vec![]);
+    assert!(instantiate_receipt.result.is_ok());
+    let hello_component = instantiate_receipt.new_component_addresses[0];
+    let _admin_badge = instantiate_receipt.new_resource_addresses[0];
+    // let account = test_env.current_user.unwrap().account;
+    // let substate = ledger.get_substate(&account);
+    let mut receipt = test_env.call_method(hello_component, "update_state", vec![scrypto_encode(&42u32)]);
+    assert!(receipt.result.is_ok());
+    println!("{:?}", receipt);
+    let mut ret: u32 = return_of_call_method(&mut receipt, "update_state");
+    assert!(ret == 0u32);
+
+    //updating state again from 42 to new value of 77, we expect to receive old value in return - 42
+    receipt = test_env.call_method(hello_component, "update_state", vec![scrypto_encode(&77u32)]);
+    assert!(receipt.result.is_ok());
+    println!("{:?}", receipt);
+    ret = return_of_call_method(&mut receipt, "update_state");
+    assert!(ret == 42u32);
+   
+   // println!("{:?}", substate.map(|substate| (::scrypto::buffer::scrypto_decode::<::scrypto::r>(&substate.value), substate.phys_id)));
 }
 

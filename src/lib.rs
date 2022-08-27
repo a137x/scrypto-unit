@@ -11,9 +11,9 @@ extern crate scrypto;
 
 //use radix_engine::engine::validate_data;
 use radix_engine::ledger::SubstateStore;
-use radix_engine::model::Receipt; //, ValidatedInstruction};
+use radix_engine::model::{Receipt, ValidatedInstruction};
 use radix_engine::transaction::*;
-//use sbor::Decode;
+use sbor::Decode;
 //use scrypto::{prelude::*, component};
 use scrypto::prelude::*;
 
@@ -68,7 +68,6 @@ impl<'l, L: SubstateStore> TestEnv<'l, L> {
         let executor = TransactionExecutor::new(ledger, false);
         let users: HashMap<String, User> = HashMap::new();
         let packages: HashMap<String, PackageAddress> = HashMap::new();
-        // let current_user: HashMap<String, User> = HashMap::new();
         let users_pk: HashMap<ComponentAddress, EcdsaPrivateKey> = HashMap::new();
 
         Self {
@@ -86,7 +85,6 @@ impl<'l, L: SubstateStore> TestEnv<'l, L> {
         let executor = TransactionExecutor::new(ledger, true);
         let users: HashMap<String, User> = HashMap::new();
         let packages: HashMap<String, PackageAddress> = HashMap::new();
-        // let current_user: HashMap<String, User> = HashMap::new();
         let users_pk: HashMap<ComponentAddress, EcdsaPrivateKey> = HashMap::new();
 
         Self {
@@ -472,6 +470,7 @@ impl<'l, L: SubstateStore> TestEnv<'l, L> {
         let receipt = self.executor.validate_and_execute(&transaction).unwrap();
         receipt
     }
+
     // TODO: dropped v0.4.1
     // fn get_vault_info(
     //     ledger: &L,
@@ -492,7 +491,7 @@ impl<'l, L: SubstateStore> TestEnv<'l, L> {
     //     (resource_def_address, contents)
     // }
 
-    // TODO: dropped v0.4.1
+    //TODO: dropped v0.4.1
     // fn get_lazymap_info(
     //     ledger: &L,
     //     component_address: &ComponentAddress,
@@ -637,7 +636,7 @@ impl<'l, L: SubstateStore> TestEnv<'l, L> {
 // }
 
 // TODO: dropped v0.4.1
-// /// Decodes the return value from a blueprint function within a transaction from the receipt
+// /// Returns encoded value of blueprint function call within a transaction from the receipt
 // /// # Arguments
 // ///
 // /// * `receipt`  - The name of the package as named in the blueprint
@@ -652,25 +651,29 @@ impl<'l, L: SubstateStore> TestEnv<'l, L> {
 // /// use radix_engine::ledger::*;
 // /// use scrypto::prelude::*;
 // ///
+// /// const PACKAGE: &str = "hello-world";
+// /// const BLUEPRINT: &str = "Hello";
+// ///
 // /// let mut ledger = InMemorySubstateStore::with_bootstrap();
 // /// let mut env = TestEnv::new(&mut ledger);
 // ///
-// /// env.publish_package(
-// ///     "package",
-// ///     include_code!("../tests/assets/hello-world", "hello_world")
-// /// );
+// /// let package = compile_package!(concat!(
+// ///     env!("CARGO_MANIFEST_DIR"),
+// ///     "/tests/assets/hello-world/",
+// /// ));
+// /// env.publish_package(PACKAGE, &package);
 // ///
 // /// env.create_user("test user");
-// /// env.acting_as("test user");
 // ///
-// /// const BLUEPRINT: &str = "Hello";
-// /// let mut receipt = env.call_function(BLUEPRINT, "new", vec!["1".to_owned()]);
+// /// let mut receipt = env.call_function(BLUEPRINT, "instantiate", vec![]);
+// /// println!("{:?}", receipt);
 // /// assert!(receipt.result.is_ok());
-// /// let ret: Component = return_of_call_function(&mut receipt, BLUEPRINT);
+// /// let ret: ComponentAddress = return_of_call_function(&mut receipt, BLUEPRINT);
+// /// println!("result of return_of_function: {:?}", ret);
 // /// ```
-// pub fn return_of_call_function<T: Decode>(receipt: &mut Receipt, target_blueprint_name: &str) -> T {
+// pub fn return_of_call_function<T: Decode + std::fmt::Debug>(receipt: &mut Receipt, target_blueprint_name: &str) -> T {
 //     let instruction_index = receipt
-//         .transaction
+//         .validated_transaction
 //         .instructions
 //         .iter()
 //         .position(|i| match i {
@@ -681,56 +684,73 @@ impl<'l, L: SubstateStore> TestEnv<'l, L> {
 //         })
 //         .unwrap();
 //     let encoded = receipt.outputs.swap_remove(instruction_index).raw;
-//     scrypto_decode(&encoded).unwrap()
+//     scrypto_decode::<T>(&encoded).unwrap()
+//     //TODO: NOTE: This can panic:
+//     //thread 'main' panicked at 'called `Result::unwrap()` on an `Err` value: InvalidType { expected: Some(129), actual: 35 }'
 // }
 
-// TODO: dropped v0.4.1
-// /// Decodes the return value from a component method call within a transaction from the receipt
-// /// # Arguments
-// ///
-// /// * `receipt`  - The name of the package as named in the blueprint
-// /// * `method_name` - The name of the method to search for the matching Instruction::CallMethod
-// ///
-// /// NOTE: a custom built transaction may have more than one matching call.  This convenience
-// ///       function may not work in such cases.
-// ///
-// /// # Examples
-// /// ```
-// /// use scrypto_unit::*;
-// /// use radix_engine::ledger::*;
-// /// use scrypto::prelude::*;
-// ///
-// /// let mut ledger = InMemorySubstateStore::with_bootstrap();
-// /// let mut env = TestEnv::new(&mut ledger);
-// ///
-// /// env.publish_package(
-// ///     "package",
-// ///     include_code!("../tests/assets/hello-world", "hello_world")
-// /// );
-// ///
-// /// env.create_user("test user");
-// /// env.acting_as("test user");
-// ///
-// /// const BLUEPRINT: &str = "Hello";
-// /// let mut receipt = env.call_function(BLUEPRINT, "new", vec!["42".to_owned()]);
-// /// assert!(receipt.result.is_ok());
-// /// let component: Component = return_of_call_function(&mut receipt, BLUEPRINT);
+/// Decodes the return value from a component method call within a transaction from the receipt
+/// # Arguments
+///
+/// * `receipt`  - The name of the package as named in the blueprint
+/// * `method_name` - The name of the method to search for the matching Instruction::CallMethod
+///
+/// NOTE: a custom built transaction may have more than one matching call.  This convenience
+///       function may not work in such cases.
+///
+/// # Examples
+/// ```
+/// use scrypto_unit::*;
+/// use radix_engine::ledger::*;
+/// use scrypto::prelude::*;
+///
+/// const PACKAGE: &str = "hello-world";
+/// const BLUEPRINT: &str = "Hello";
+///
+/// let mut ledger = InMemorySubstateStore::with_bootstrap();
+/// let mut env = TestEnv::new(&mut ledger);
+///
+/// let package = compile_package!(concat!(
+///     env!("CARGO_MANIFEST_DIR"),
+///     "/tests/assets/hello-world/",
+/// ));
+/// env.publish_package(PACKAGE, &package);
+///
+/// env.create_user("test user");
+/// env.acting_as("test user");
+///
+/// let mut receipt = env.call_function(BLUEPRINT, "instantiate", vec![]);
+/// assert!(receipt.result.is_ok());
+/// let component = receipt.new_component_addresses[0];
+/// receipt = env.call_method(component, "update_state", vec![scrypto_encode(&42u32)]);
+/// assert!(receipt.result.is_ok());
+/// let ret: u32 = return_of_call_method(&mut receipt, "update_state");
+/// assert!(ret == 0u32);
+/// ```
+pub fn return_of_call_method<T: Decode>(receipt: &mut Receipt, method_name: &str) -> T {
+    let instruction_index = receipt
+        .validated_transaction
+        .instructions
+        .iter()
+        .position(|i| match i {
+            ValidatedInstruction::CallMethod { ref method, .. } if method == method_name => true,
+            _ => false,
+        })
+        .unwrap();
+    let encoded = receipt.outputs.swap_remove(instruction_index).raw;
+    scrypto_decode::<T>(&encoded).unwrap()
 
-// /// let mut receipt = env.call_method(&component.address(), "update_state", vec!["77".to_owned()]);
-// /// assert!(receipt.result.is_ok());
-// /// let ret: u32 = return_of_call_method(&mut receipt, "update_state");
-// /// assert!(ret == 42);
-// /// ```
-// pub fn return_of_call_method<T: Decode>(receipt: &mut Receipt, method_name: &str) -> T {
-//     let instruction_index = receipt
-//         .transaction
-//         .instructions
-//         .iter()
-//         .position(|i| match i {
-//             ValidatedInstruction::CallMethod { ref method, .. } if method == method_name => true,
-//             _ => false,
-//         })
-//         .unwrap();
-//     let encoded = receipt.outputs.swap_remove(instruction_index).raw;
-//     scrypto_decode(&encoded).unwrap()
-// }
+    // println!("print encoded: {:?}", encoded);
+    // let decoded: Result<Vec<u8>, DecodeError> = scrypto_decode(&encoded);
+    // match &decoded {
+    //     Ok(decoded) => {
+    //         let decoded: Result<String, DecodeError> = scrypto_decode(&decoded);
+    //         println!("753: {:?}", decoded);
+    //     }
+    //     Err(_) => {
+    //         println!("756: {:?}", decoded);
+    //     },
+    // }
+    // decoded
+    //::scrypto::buffer::scrypto_decode::<::scrypto::component::ComponentAddress>(&encoded)
+}
